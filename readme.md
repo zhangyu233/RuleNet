@@ -46,3 +46,18 @@ The model can be evaluated using the following metrics MRR, MR, HITS@1, HITS@3, 
  --save ./save/FB15k_model\
  --init ./save/FB15knew
 ~~~
+
+Rule extraction
+
+The logic rules can be recovered using the following command:
+
+~~~
+ main.py --do_train False \ 
+ --do_valid False \ 
+ --do_test False \ 
+ --device cuda:0 \
+ --recover_rule True\
+ --data_path ./data/FB15k \
+ --save ./save/FB15knew\
+ --init ./save/FB15knew
+~~~

@@ -21,15 +21,15 @@ def parse_args(args=None):
         usage='main.py [<args>] [-h | --help]'
     )
     parser.add_argument('--cuda', action='store_true', default=True, help='use GPU')
-    parser.add_argument('-save', '--save_path', default='./save/wn18', type=str)
-    parser.add_argument('-init', '--init_checkpoint', default='./save/wn18', type=str)
+    parser.add_argument('-save', '--save_path', default='./save/FB15knew', type=str)
+    parser.add_argument('-init', '--init_checkpoint', default='./save/FB15knew', type=str)
     parser.add_argument('--device', type=str, default='cuda:0', help='')
     parser.add_argument('--do_train', action='store_true', default=False)
-    parser.add_argument('--do_valid', action='store_true',default=False)
-    parser.add_argument('--do_test', action='store_true',default=False)
-    parser.add_argument('--recover_rule', action='store_true',default=True)
-    parser.add_argument('--evaluate_train', action='store_true', default=False,help='Evaluate on training data')
-    parser.add_argument('--data_path', type=str, default='./data/wn18')
+    parser.add_argument('--do_valid', action='store_true', default=False)
+    parser.add_argument('--do_test', action='store_true', default=False)
+    parser.add_argument('--recover_rule', action='store_true', default=True)
+    parser.add_argument('--evaluate_train', action='store_true', default=False, help='Evaluate on training data')
+    parser.add_argument('--data_path', type=str, default='./data/FB15k')
     parser.add_argument('-n', '--negative_sample_size', default=128, type=int)
     parser.add_argument('-d', '--hidden_dim', default=300, type=int)
     parser.add_argument('-g', '--gamma', default=12.0, type=float)
@@ -142,6 +142,15 @@ def log_metrics(mode, step, metrics):
     for metric in metrics:
         logging.info('%s %s at step %d: %f' % (mode, metric, step, metrics[metric]))
 
+def load_rule(path):
+    result = np.load(os.path.join(path, 'result.npy'), allow_pickle=True).item()
+    newre = dict()
+    for num, score in result.items():
+        newre[num] = np.sum(score)
+    newre = sorted(newre.items(), key=lambda x: x[1], reverse=True)
+    return newre
+
+
 
 def main(args):
     if (not args.do_train) and (not args.do_valid) and (not args.do_test) and(not args.recover_rule):
@@ -253,12 +262,6 @@ def main(args):
             num_workers=max(1, args.cpu_num // 2),
             collate_fn=TrainDataset.collate_fn
         )
-      
-        result = np.load(r'F:\zhangyuxuan\nips2020_code\joint_learning\save\wn18\result.npy', allow_pickle=True).item()
-        newre = dict()
-        for num, score in result.items():
-            newre[num] = np.sum(score)
-        newre=sorted(newre.items(),key=lambda x:x[1],reverse=True)
         result = dict()
         for i, data in enumerate(train_dataloader_tail):
             r_atten, weight2 = rule_model.get_weight(rule_model, data, args)
@@ -290,14 +293,19 @@ def main(args):
                 # result.append((rule_weight, dnum, tail))
             # print (i)
         np.save(os.path.join(args.save_path, 'result.npy'),result)
-        # np.save('result.npy',result)
-
-        
-        
-        te = 1
-        id2relation =dict()    
-        for r, i in relation2id.items():
-            id2relation[i] = r
+        newre = dict()
+        for num, score in result.items():
+            newre[num] = np.sum(score)
+        newre = sorted(newre.items(), key=lambda x: x[1], reverse=True)
+        rules = list()
+        for i in range(100):
+            body = newre[i][0][0]
+            body_e = [id2relation[i] for i in body]
+            head = id2relation[newre[i][0][1]]
+            score = newre[i][1]
+            rules.append((body_e, head, score))
+        file = open(os.path.join(args.save_path, 'rules.txt'), 'w')
+        file.write(str(rules))
                
 
 
