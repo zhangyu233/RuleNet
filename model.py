@@ -36,13 +36,20 @@ class EmbeddingLayer(nn.Module):
             b=self.embedding_range.item()
         )
 
-        # self.relation_embedding = nn.Parameter(torch.zeros(nrelation, self.relation_dim))
-        self.relation_embedding = nn.Parameter(torch.zeros(nrelation, self.relation_dim , self.relation_dim))
+        # # self.relation_embedding = nn.Parameter(torch.zeros(nrelation, self.relation_dim))
+        # self.relation_embedding = nn.Parameter(torch.zeros(nrelation, self.relation_dim , self.relation_dim))
+        # nn.init.uniform_(
+        #     tensor=self.relation_embedding,
+        #     a=-self.embedding_range.item(),
+        #     b=self.embedding_range.item()
+        # )
+        self.relation_embedding = nn.Parameter(torch.zeros(nrelation, self.relation_dim))
         nn.init.uniform_(
-            tensor=self.relation_embedding,
-            a=-self.embedding_range.item(),
+            tensor=self.relation_embedding, 
+            a=-self.embedding_range.item(), 
             b=self.embedding_range.item()
         )
+        
 
 
     def forward(self, sample):
@@ -54,12 +61,19 @@ class EmbeddingLayer(nn.Module):
             dim=0,
             index=head_part[:, 0]
         ).unsqueeze(1) #(b, 1, 500)
-
+        relation_e = torch.diag_embed(self.relation_embedding)
+        # relation_e = [torch.diag(self.relation_embedding[i, :]).unsqueeze(0) for i in  range(self.relation_embedding.size(0))]
+        # relation_e = torch.cat(relation_e, dim = 0)
         relation = torch.index_select(
-            self.relation_embedding,
+            relation_e,
             dim=0,
             index=head_part[:, 1]
-        ).unsqueeze(1) #(b, 1, 500, 500)
+        ).unsqueeze(1)  #(b, 500)
+        # relation = torch.index_select(
+        #     self.relation_embedding,
+        #     dim=0,
+        #     index=head_part[:, 1]
+        # ).unsqueeze(1)  #(b, 500)
 
         nega_tail = torch.index_select(
             self.entity_embedding,
@@ -74,14 +88,15 @@ class EmbeddingLayer(nn.Module):
         ).unsqueeze(1)
 
         t = torch.einsum('bad, badp-> bap', head, relation)
+        # nega_score = head * (relation * nega_tail)
+        # nega_score = nega_score.sum(dim = 2)
+        # posi_score =  head * (relation * posi_tail)
+        # posi_score =  posi_score.sum(dim = 2)
         nega_score = torch.einsum('bad, bkd-> bak', t, nega_tail).squeeze() #shape (b, negadim)
         posi_score = torch.einsum('bad, bkd-> bak', t, posi_tail).squeeze() #shape(b, 1)
         nega_score1 = F.logsigmoid(-nega_score).mean(dim = 1)
-        posi_score1= F.logsigmoid(posi_score)
-        # if args.uni_weight:
-        # positive_sample_loss = - posi_score1.mean()
-        # negative_sample_loss = - nega_score1.mean()
-  
+        posi_score1 = F.logsigmoid(posi_score).squeeze()
+
 
         return posi_score1, nega_score1, nega_score
 
@@ -113,7 +128,10 @@ class Rule_Net(nn.Module):
             index=head_part[:, 0]
         ) #(b, 500)
 
-        relations = self.EmbeddingLayer.relation_embedding #(r, 500, 500)
+        # relations = self.EmbeddingLayer.relation_embedding #(r, 500)
+        # relations = [torch.diag(self.EmbeddingLayer.relation_embedding[i, :]).unsqueeze(0) for i in range(self.EmbeddingLayer.relation_embedding.size(0))]
+        # relations = torch.cat(relations, dim = 0)
+        relations = torch.diag_embed(self.EmbeddingLayer.relation_embedding)
         posi_tail = torch.index_select(
             self.EmbeddingLayer.entity_embedding,
             dim=0,
@@ -127,7 +145,7 @@ class Rule_Net(nn.Module):
                 e1 = torch.einsum('bd,rdq->brq', head, relations)
                 weight = torch.einsum('brq,qm->brm', e1, self.W[l])# (b,r,1)
                 weight = F.softmax(weight, dim = 1)
-                e1 = torch.einsum('brq,brt->bqt', e1, weight).squeeze() #（b,d）
+                e1 = torch.einsum('brq,brt->bqt', e1, weight).squeeze(2) #（b,d）
                 e1 = F.normalize(e1, p=2, dim=1)
                 temp.append(e1)
                 r_atten.append(weight)
@@ -135,22 +153,23 @@ class Rule_Net(nn.Module):
                 e1 = torch.einsum('bd,rdq->brq', temp[l-1], relations)
                 weight = torch.einsum('brq,qm->brm', e1, self.W[l])# (b,r,1)
                 weight = F.softmax(weight, dim = 1)
-                e1 = torch.einsum('brq,brt->bqt', e1, weight).squeeze() #（b,d）
+                e1 = torch.einsum('brq,brt->bqt', e1, weight).squeeze(2) #（b,d）
                 e1 = F.normalize(e1, p=2, dim=1)
                 temp.append(e1)
+                r_atten.append(weight)
         final = torch.cat([torch.unsqueeze(r, 1) for r in temp], dim=1)
         # final = torch.cat(temp, dim = 1) #(b,l,d)
         weight2 = torch.einsum('bld,dk->blk', final, self.W2)
         weight2 = F.softmax(weight2, dim =1)
         final = torch.einsum('bld,blk->bd', final, weight2)
         final = F.normalize(final, p=2, dim=1) #
-        match_score = torch.einsum('bd,bd->b', final, posi_tail.squeeze())
+        match_score = torch.einsum('bd,bd->b', final, posi_tail.squeeze(1))
         match_score = F.logsigmoid(match_score)
         match_loss = -match_score.mean()
         return  r_atten, weight2, match_loss
 
     @staticmethod
-    def train_step(model, optimizer, train_iterator, args):
+    def train_step(model, optimizer, train_iterator, args, joint = False):
         '''
         A single train step. Apply back-propation and return the loss
         '''
@@ -172,7 +191,7 @@ class Rule_Net(nn.Module):
         negative_sample_loss = - (subsampling_weight * nega_score1).sum() / subsampling_weight.sum()
         embed_loss = (positive_sample_loss + negative_sample_loss)/2
 
-        r_atten, weight2, match_loss = model((positive_sample, negative_sample))
+     
         regularization_log = {'regularization': 0}
         if args.regularization != 0.0:
             regularization = args.regularization * (
@@ -182,28 +201,54 @@ class Rule_Net(nn.Module):
             embed_loss = embed_loss + args.regularization * regularization
             regularization_log = {'regularization': regularization.item()}
 
-        if args.itertrain:
-            embed_loss.backward()
-            optimizer.step()
-            # loss = embed_loss + match_loss
+        if not joint:
             loss = embed_loss
             loss.backward()
             optimizer.step()
+            log = {
+            **regularization_log,
+            'positive_sample_loss': positive_sample_loss.item(),
+            'negative_sample_loss': negative_sample_loss.item(),
+            'embed_loss': embed_loss.item(),
+            'loss': loss.item()}
         else:
+            r_atten, weight2, match_loss = model((positive_sample, negative_sample))
             loss = embed_loss + match_loss
             loss.backward()
             optimizer.step()
-
-        log = {
+            log = {
             **regularization_log,
             'positive_sample_loss': positive_sample_loss.item(),
             'negative_sample_loss': negative_sample_loss.item(),
             'embed_loss': embed_loss.item(),
             'match_loss': match_loss.item(),
-            'loss': loss.item()
-        }
+            'loss': loss.item()}
+
 
         return log
+    
+    @staticmethod
+    def get_weight(model, data, args):
+        '''
+        recover rules from attention weights
+        '''
+
+        model.eval()
+        positive_sample, negative_sample, _ = data
+
+        if args.cuda:
+            device = torch.device(args.device)
+            positive_sample = positive_sample.to(device)
+            negative_sample = negative_sample.to(device)
+            # subsampling_weight = subsampling_weight.to(device)
+
+        # posi_score1, nega_score1,  _  = model.EmbeddingLayer(( positive_sample, negative_sample))
+        # positive_sample_loss = - (subsampling_weight * posi_score1).sum() / subsampling_weight.sum()
+        # negative_sample_loss = - (subsampling_weight * nega_score1).sum() / subsampling_weight.sum()
+
+        r_atten, weight2, match_loss = model((positive_sample, negative_sample))
+        return r_atten, weight2
+
 
     @staticmethod
     def test_step(model, test_triples, all_true_triples, args):

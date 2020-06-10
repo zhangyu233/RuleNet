@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from model_dismult import Rule_Net
+from model import Rule_Net
 from data import TrainDataset, OneShotIterator
 
 
