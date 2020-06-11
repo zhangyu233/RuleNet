@@ -17,14 +17,7 @@ Knowledge Graph Data:
 
  For example, this command trains a RuleNet model on FB15k dataset with GPU 0.
  ~~~
- main.py --do_train True \ --do_valid True \ 
- --do_test True \ 
- --device cuda:0 \
- --recover_rule False\
- --data_path ./data/FB15k \
- --max_steps 100000\
- --d 300 --b 300 -lr 0.0001\
- --save ./save/FB15k_model
+ python main.py --do_train --do_valid --do_test  --device cuda:0 --data_path ./data/FB15k --max_steps 100000 --d 300 --b 300 -lr 0.0001 --save ./save/FB15k_model
  ~~~
 
  **Test**
@@ -37,14 +30,7 @@ https://drive.google.com/drive/folders/15cRtMk7URLCqmN5_cJoF3mrMXc_mDuRb?usp=sha
 The model can be evaluated using the following metrics MRR, MR, HITS@1, HITS@3, HITS@10. This command test a pretrained model on FB15k dataset with GPU 0:
 
 ~~~
- main.py --do_train False \ 
- --do_valid False \ 
- --do_test True \ 
- --device cuda:0 \
- --recover_rule False\
- --data_path ./data/FB15k \
- --save ./save/FB15k_model\
- --init ./save/FB15knew
+ python main.py  --do_test --device cuda:0 --data_path ./data/FB15k --save_path ./save/FB15k_model --init_checkpoint ./save/FB15knew
 ~~~
 
 Rule extraction
@@ -52,12 +38,5 @@ Rule extraction
 The logic rules can be recovered using the following command:
 
 ~~~
- main.py --do_train False \ 
- --do_valid False \ 
- --do_test False \ 
- --device cuda:0 \
- --recover_rule True\
- --data_path ./data/FB15k \
- --save ./save/FB15knew\
- --init ./save/FB15knew
+python main.py  --device cuda:0  --recover_rule  --data_path ./data/FB15k --save_path ./save/FB15knew --init_checkpoint ./save/FB15knew
 ~~~

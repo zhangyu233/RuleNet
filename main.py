@@ -21,15 +21,15 @@ def parse_args(args=None):
         usage='main.py [<args>] [-h | --help]'
     )
     parser.add_argument('--cuda', action='store_true', default=True, help='use GPU')
-    parser.add_argument('-save', '--save_path', default='./save/FB15knew', type=str)
-    parser.add_argument('-init', '--init_checkpoint', default='./save/FB15knew', type=str)
+    parser.add_argument('-save', '--save_path', default='./save/wn18_match', type=str)
+    parser.add_argument('-init', '--init_checkpoint', default=None, type=str)
     parser.add_argument('--device', type=str, default='cuda:0', help='')
     parser.add_argument('--do_train', action='store_true', default=False)
     parser.add_argument('--do_valid', action='store_true', default=False)
     parser.add_argument('--do_test', action='store_true', default=False)
-    parser.add_argument('--recover_rule', action='store_true', default=True)
+    parser.add_argument('--recover_rule', action='store_true', default=False)
     parser.add_argument('--evaluate_train', action='store_true', default=False, help='Evaluate on training data')
-    parser.add_argument('--data_path', type=str, default='./data/FB15k')
+    parser.add_argument('--data_path', type=str, default='./data/wn18')
     parser.add_argument('-n', '--negative_sample_size', default=128, type=int)
     parser.add_argument('-d', '--hidden_dim', default=300, type=int)
     parser.add_argument('-g', '--gamma', default=12.0, type=float)
@@ -104,7 +104,7 @@ def read_triple(file_path, entity2id, relation2id):
     Read triples and map them into ids.
     '''
     triples = []
-    with open(file_path) as fin:
+    with open(file_path, encoding='UTF-8') as fin:
         for line in fin:
             h, r, t = line.strip().split('\t')
             triples.append((entity2id[h], relation2id[r], entity2id[t]))
@@ -170,13 +170,13 @@ def main(args):
     # Write logs to checkpoint and console
     set_logger(args)
 
-    with open(os.path.join(args.data_path, 'entities.dict')) as fin:
+    with open(os.path.join(args.data_path, 'entities.dict'), encoding='UTF-8') as fin:
         entity2id = dict()
         for line in fin:
             eid, entity = line.strip().split('\t')
             entity2id[entity] = int(eid)
 
-    with open(os.path.join(args.data_path, 'relations.dict')) as fin:
+    with open(os.path.join(args.data_path, 'relations.dict'), encoding='UTF-8') as fin:
         relation2id = dict()
         for line in fin:
             rid, relation = line.strip().split('\t')
@@ -253,7 +253,11 @@ def main(args):
    
     if args.recover_rule:
         logging.info('Loading checkpoint %s...' % args.init_checkpoint)
-        checkpoint = torch.load(os.path.join(args.init_checkpoint, 'checkpoint.pth'))
+        try:
+            checkpoint = torch.load(os.path.join(args.init_checkpoint, 'checkpoint.pth'))
+        except:
+            checkpoint = torch.load(os.path.join(args.init_checkpoint, 'checkpoint.pth'),
+                                    map_location={'cuda:1': 'cuda:0'})
         rule_model.load_state_dict(checkpoint['model_state_dict'])
         train_dataloader_tail = DataLoader(
             TrainDataset(train_triples, nentity, nrelation, args.negative_sample_size),
@@ -310,7 +314,7 @@ def main(args):
 
 
 
-    if args.init_checkpoint:
+    if args.init_checkpoint and not args.recover_rule:
         # Restore model from checkpoint directory
         logging.info('Loading checkpoint %s...' % args.init_checkpoint)
         checkpoint = torch.load(os.path.join(args.init_checkpoint, 'checkpoint.pth'))
