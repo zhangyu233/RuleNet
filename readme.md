@@ -17,7 +17,7 @@ Knowledge Graph Data:
 
  For example, this command trains a RuleNet model on FB15k dataset with GPU 0.
  ~~~
- python main.py --do_train --do_valid --do_test  --device cuda:0 --data_path ./data/FB15k --max_steps 100000 --d 300 --b 300 -lr 0.0001 --save ./save/FB15k_model
+ python main.py --do_train --do_valid --do_test  --device cuda:0 --data_path ./data/FB15k --max_steps 100000 --hidden_dim 300 --batch_size 300 --learning_rate 0.0001 --save_path ./save/FB15k_model
  ~~~
 
  **Test**
@@ -33,7 +33,7 @@ The model can be evaluated using the following metrics MRR, MR, HITS@1, HITS@3, 
  python main.py  --do_test --device cuda:0 --data_path ./data/FB15k --save_path ./save/FB15k_model --init_checkpoint ./save/FB15knew
 ~~~
 
-Rule extraction
+**Rule extraction**
 
 The logic rules can be recovered using the following command:
 
